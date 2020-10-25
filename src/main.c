@@ -1,33 +1,10 @@
-#include "freertos/FreeRTOS.h"
-#include "esp_log.h"
-#include "freertos/task.h"
-#include "freertos/queue.h"
-#include <driver/gpio.h>
-#include <stdio.h>
-#include <driver/spi_master.h>
-#include <driver/adc.h>
-#include <u8g2_esp32_hal.h> 
-
-#define loop while(true)
-#define PIN_LUM ADC_WIDTH_BIT_12
-#define PIN_SDA 5
-#define PIN_SCL 4
-#define MAX_WIDTH 128
-#define MAX_HEIGHT 64
-#define LUMINOSITY_MAX_VALUE 1000
+#include <libs.h>
 
 static const char *TAG = "ESPLOG";
 QueueHandle_t bufferLuminosity; 
-int historic[MAX_WIDTH];
 u8g2_t u8g2;
 
 void delay(int millis);
-void drawHistoric(int newValue);
-void drawMoon();
-void drawSun();
-void animateSun(bool small);
-void clearDraw();
-void printValue(int value);
 void taskReadLum(void *pvParameters);
 void taskDisplay(void *pvParameters);
 
@@ -74,22 +51,22 @@ void taskDisplay(void *pvParameters) {
 
     loop {
         xQueueReceive(bufferLuminosity, &lum, pdMS_TO_TICKS(2000));
-        drawHistoric(lum);
+        drawHistoric(&u8g2, lum);
         bool actualState = lum > 100;
         if (actualState != showSun || firstIteraction) {
             showSun = actualState;
-            clearDraw();
+            clearDraw(&u8g2);
             if (showSun) {
-                drawSun();
+                drawSun(&u8g2);
             } else {
-                drawMoon();
+                drawMoon(&u8g2);
             }
         }
         if (showSun) {
-            animateSun(sunBigger);
+            animateSun(&u8g2, sunBigger);
         }
         sunBigger = !sunBigger;
-        printValue(lum);
+        printValue(&u8g2, lum);
         u8g2_SendBuffer(&u8g2);
         firstIteraction = false;
     }
@@ -97,115 +74,4 @@ void taskDisplay(void *pvParameters) {
 
 void delay(int millis) {
     vTaskDelay(millis / portTICK_RATE_MS);
-}
-
-void drawHistoric(int newValue) {
-    if (newValue > LUMINOSITY_MAX_VALUE) {
-        newValue = LUMINOSITY_MAX_VALUE;
-    }
-    int percent = (newValue / 1.0) / (LUMINOSITY_MAX_VALUE / 1.0) * 100.0;
-    for (int i = 0; i < MAX_WIDTH - 1; i++) {
-        historic[i] = historic[i + 1];
-    }
-    historic[MAX_WIDTH - 1] = percent;
-    for (int i = 0; i < MAX_WIDTH; i++) {
-        int size = historic[i] / 5.0;
-        u8g2_SetDrawColor(&u8g2, 0);
-        u8g2_DrawVLine(&u8g2, i, MAX_HEIGHT - 20, 20);
-        u8g2_SetDrawColor(&u8g2, 1);
-        u8g2_DrawVLine(&u8g2, i, MAX_HEIGHT - size, size);
-    }
-}
-
-void printValue(int value) {
-    char print[5];
-    sprintf(print, "%d", value);
-    u8g2_SetFont(&u8g2, u8g2_font_6x10_mf);
-    u8g2_DrawUTF8(&u8g2, 64, 26, print);
-}
-
-void drawMoon() {
-    u8g2_SetDrawColor(&u8g2, 1);
-    u8g2_DrawDisc(&u8g2, 23, 23, 18, U8G2_DRAW_ALL);
-    u8g2_SetDrawColor(&u8g2, 0);
-    u8g2_DrawDisc(&u8g2, 30, 20, 18, U8G2_DRAW_ALL);
-    u8g2_SetDrawColor(&u8g2, 1);
-    u8g2_SetFont(&u8g2, u8g2_font_unifont_t_symbols);
-    u8g2_DrawGlyph(&u8g2, 78, 31, 0x2605);
-    u8g2_DrawGlyph(&u8g2, 108, 38, 0x2605);
-    u8g2_DrawGlyph(&u8g2, 39, 10, 0x2605);
-    u8g2_DrawGlyph(&u8g2, 28, 26, 0x2605);
-    u8g2_DrawGlyph(&u8g2, 60, 15, 0x2605);
-    u8g2_DrawGlyph(&u8g2, 71, 41, 0x2605);
-    u8g2_DrawGlyph(&u8g2, 95, 17, 0x2605);
-    u8g2_SendBuffer(&u8g2);
-}
-
-void drawSun() {
-    //Circulo Central
-    u8g2_SetDrawColor(&u8g2, 1);
-    u8g2_DrawDisc(&u8g2, 23, 23, 8, U8G2_DRAW_ALL);
-}
-
-void animateSun(bool small) {
-    if (small) {
-        u8g2_SetDrawColor(&u8g2, 0);
-        //Vertical Superior
-        u8g2_DrawLine(&u8g2, 23, 5, 23, 11);
-        //Vertical Inferior
-        u8g2_DrawLine(&u8g2, 23, 35, 23, 41);
-        //Horizontal Esquerda
-        u8g2_DrawLine(&u8g2, 11, 23, 5, 23);
-        //Horizontal Direita
-        u8g2_DrawLine(&u8g2, 35, 23, 41, 23);
-        //Diagonal Norte Direita
-        u8g2_DrawLine(&u8g2, 35, 11, 31, 15);
-        //Diagonal Norte Esquerda
-        u8g2_DrawLine(&u8g2, 11, 11, 15, 15);
-        //Diagonal Sul Direita
-        u8g2_DrawLine(&u8g2, 35, 35, 31, 31);
-        //Diagonal Sul Esquerda
-        u8g2_DrawLine(&u8g2, 11, 35, 15, 31);
-
-        u8g2_SetDrawColor(&u8g2, 1);
-        //Vertical Superior
-        u8g2_DrawLine(&u8g2, 23, 7, 23, 11);
-        //Vertical Inferior
-        u8g2_DrawLine(&u8g2, 23, 35, 23, 39);
-        //Horizontal Esquerda
-        u8g2_DrawLine(&u8g2, 11, 23, 7, 23);
-        //Horizontal Direita
-        u8g2_DrawLine(&u8g2, 35, 23, 39, 23);
-        //Diagonal Norte Direita
-        u8g2_DrawLine(&u8g2, 33, 13, 31, 15);
-        //Diagonal Norte Esquerda
-        u8g2_DrawLine(&u8g2, 13, 13, 15, 15);
-        //Diagonal Sul Direita
-        u8g2_DrawLine(&u8g2, 33, 33, 31, 31);
-        //Diagonal Sul Esquerda
-        u8g2_DrawLine(&u8g2, 13, 33, 15, 31);
-    } else {
-        u8g2_SetDrawColor(&u8g2, 1);
-        //Vertical Superior
-        u8g2_DrawLine(&u8g2, 23, 5, 23, 11);
-        //Vertical Inferior
-        u8g2_DrawLine(&u8g2, 23, 35, 23, 41);
-        //Horizontal Esquerda
-        u8g2_DrawLine(&u8g2, 11, 23, 5, 23);
-        //Horizontal Direita
-        u8g2_DrawLine(&u8g2, 35, 23, 41, 23);
-        //Diagonal Norte Direita
-        u8g2_DrawLine(&u8g2, 35, 11, 31, 15);
-        //Diagonal Norte Esquerda
-        u8g2_DrawLine(&u8g2, 11, 11, 15, 15);
-        //Diagonal Sul Direita
-        u8g2_DrawLine(&u8g2, 35, 35, 31, 31);
-        //Diagonal Sul Esquerda
-        u8g2_DrawLine(&u8g2, 11, 35, 15, 31);
-    }
-}
-
-void clearDraw() {
-    u8g2_SetDrawColor(&u8g2, 0);
-    u8g2_DrawBox(&u8g2, 0, 0, MAX_WIDTH, 44);
 }
